@@ -1,8 +1,11 @@
 import random
 import re
+import socket
 import sqlite3
 import subprocess
+import concurrent.futures
 
+maximum_concurrent_tasks = 30
 
 def initDatabase():
     # Connexion à la base de données (ou création si elle n'existe pas)
@@ -62,38 +65,40 @@ def extractResultInfo(ip, result):
         else:
             users_count, total_users = None, None
 
-        return {
-            'IP': ip,
-            'PORT': port,
-            'STATE': state,
-            'SERVICE': service,
-            'INFOS': {
-                'TITLE': message,
-                'VERSION_RANGE': version_range,
-                'USERS': {
-                    'ONLINE': users_count,
-                    'MAX': total_users,
+        data = {
+            'ip': ip,
+            'port': port,
+            'state': state,
+            'service': service,
+            'mc': {
+                'title': message,
+                'version_range': version_range,
+                'users': {
+                    'online': users_count,
+                    'max': total_users,
                 },
             }
         }
+        return data
         
     else:
         return None
     
 def saveToDatabase(infos):
-    data = {"ip": infos["IP"], "title": infos["INFOS"]["TITLE"], "versionRange": infos["INFOS"]["VERSION_RANGE"],
-            "onlineUsers": infos["INFOS"]["USERS"]["ONLINE"], "maxUsers": infos["INFOS"]["USERS"]["MAX"]}
+    if infos["state"] == "open":
+        data = {"ip": infos["ip"], "title": infos["mc"]["title"], "versionRange": infos["mc"]["version_range"],
+                "onlineUsers": infos["mc"]["users"]["online"], "maxUsers": infos["mc"]["users"]["max"]}
 
-    conn = sqlite3.connect('MCServerInfos.db')
-    conn.execute('''
-        INSERT OR REPLACE INTO MCServerInfos (ip, title, versionRange, onlineUsers, maxUsers, lastUpdate)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ''', (data["ip"], data["title"], data["versionRange"], data["onlineUsers"], data["maxUsers"]))
+        conn = sqlite3.connect('MCServerInfos.db')
+        conn.execute('''
+            INSERT OR REPLACE INTO MCServerInfos (ip, title, versionRange, onlineUsers, maxUsers, lastUpdate)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (data["ip"], data["title"], data["versionRange"], data["onlineUsers"], data["maxUsers"]))
 
 
-    # Valider les modifications et fermer la connexion
-    conn.commit()
-    conn.close()
+        # Valider les modifications et fermer la connexion
+        conn.commit()
+        conn.close()
 
 # Envoyer une requête TCP à l'ip au port souhaité et retourne les informations        
 def sendNmapRequest(ip, port):
@@ -108,7 +113,7 @@ def sendNmapRequest(ip, port):
         print(f"Erreur lors de l'exécution de la commande : {e}")
         return None
 
-def main():
+def main(i):
     initDatabase()
     ip = getRandomIp()
     port = "25565"
@@ -117,12 +122,35 @@ def main():
     if result:
         # Extrayez les informations du service
         infos = extractResultInfo(ip, result)
-        saveToDatabase(infos)
-        print("Informations du service :\n", infos)
+
+        if infos and infos['state'] == "open":
+            saveToDatabase(infos)
+            print(f"{i} - Informations de l'ip :\n{infos}")
+        else: 
+            print(f"{i} - Aucune information pour l'ip {ip} (filtered, close ou none)")
     else:
-        print("Erreur lors de l'exécution de la commande Nmap.")
+        print(f"{i} - Erreur lors de l'exécution de la commande Nmap.")
     
 if __name__ == "__main__":
-    nbCrawl = int(input("Combien de crawl ?"))
-    for i in range(nbCrawl):
-        main()
+    nbCrawl = int(input("Combien de crawl ? "))
+
+    # Créer un pool de threads pour exécuter les tâches en parallèle
+    with concurrent.futures.ThreadPoolExecutor(max_workers=maximum_concurrent_tasks) as executor:
+        # Liste des futures pour les tâches en cours
+        futures = []
+        #ip_map_lock = threading.Lock()
+
+        # Lancer les tâches en parallèle
+        for i in range(1, nbCrawl + 1):
+            future = executor.submit(main, i)
+            futures.append(future)
+
+        # Attendre que toutes les tâches se terminent
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except socket.gaierror:
+                # Gérer les erreurs de résolution DNS si nécessaire
+                pass
+            
+    print("Terminé")

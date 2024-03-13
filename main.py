@@ -115,9 +115,11 @@ def sendNmapRequest(ip, port):
     command = ["nmap", "-p", port, "-sV", ip]
 
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True).stdout
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=60).stdout
 
         return result
+    except subprocess.TimeoutExpired:
+        print(f"La commande a pris trop de temps sur l'ip {ip} et a été interrompue.")
     except subprocess.CalledProcessError as e:
         print(f"Erreur lors de l'exécution de la commande : {e}")
         return None

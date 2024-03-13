@@ -53,10 +53,10 @@ def extractResultInfo(ip, result):
         else:
             message = None
 
-        version_pattern = r"(1\..*?1\..*)(?=,)"
+        version_pattern = r"1\.\d+([- .\d]*)"
         version_match = re.search(version_pattern, version_info)
         if version_match:
-            version_range = version_match.group(1)
+            version_range = version_match.group(0)
         else:
             version_range = None
 
@@ -131,7 +131,7 @@ def sendDiscordAlert(infos):
     users = str(infos['mc']['users']['online']) + "/" + str(infos['mc']['users']['max'])
 
     data = {
-        "content" : f"Un serveur ouvert a été trouvé (Status: 'open').\nIp : {ip}\nTitre : {title}\nVersions : {version_range}\nUsers : {users}",
+        "content" : f"==================== \nUn serveur ouvert a été trouvé (Status: 'open'). \nIp : {ip} \nTitre : {title} \nVersions : {version_range} \nUsers : {users}",
         "username" : "McCrawler Alert"
     }
     result = requests.post(webhook_url, json = data)
@@ -159,6 +159,7 @@ def main(i):
             saveToDatabase(infos)
             sendDiscordAlert(infos)
             print(f"{i} - Informations de l'ip :\n{infos}")
+            print(result)
         else:
             pass 
             #print(f"{i} - Aucune information pour l'ip {ip} (not minecraft service or none)")

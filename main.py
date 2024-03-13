@@ -123,7 +123,6 @@ def sendNmapRequest(ip, port):
 def main(i):
     initDatabase()
     ip = getRandomIp()
-    ip = "141.94.138.22"
     port = "25565"
     result = sendNmapRequest(ip, port)
 

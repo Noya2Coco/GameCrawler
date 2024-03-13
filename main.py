@@ -85,20 +85,27 @@ def extractResultInfo(ip, result):
         return None
     
 def saveToDatabase(infos):
-    if infos["state"] == "open":
-        data = {"ip": infos["ip"], "title": infos["mc"]["title"], "versionRange": infos["mc"]["version_range"],
-                "onlineUsers": infos["mc"]["users"]["online"], "maxUsers": infos["mc"]["users"]["max"]}
+    if infos["service"] == "minecraft":
+        ip = infos["ip"]
 
-        conn = sqlite3.connect('MCServerInfos.db')
-        conn.execute('''
-            INSERT OR REPLACE INTO MCServerInfos (ip, title, versionRange, onlineUsers, maxUsers, lastUpdate)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (data["ip"], data["title"], data["versionRange"], data["onlineUsers"], data["maxUsers"]))
+        try:
+            data = {"ip": infos["ip"], "title": infos["mc"]["title"], "versionRange": infos["mc"]["version_range"],
+                    "onlineUsers": infos["mc"]["users"]["online"], "maxUsers": infos["mc"]["users"]["max"]}
+
+            conn = sqlite3.connect('MCServerInfos.db')
+            conn.execute('''
+                INSERT OR REPLACE INTO MCServerInfos (ip, title, versionRange, onlineUsers, maxUsers, lastUpdate)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (data["ip"], data["title"], data["versionRange"], data["onlineUsers"], data["maxUsers"]))
 
 
-        # Valider les modifications et fermer la connexion
-        conn.commit()
-        conn.close()
+            # Valider les modifications et fermer la connexion
+            conn.commit()
+            conn.close()
+
+            print(f"### L'ip {ip} à été sauvegardée ###")
+        except:
+            print(f"XXX Problème survenu lors de la sauvegarde de l'ip {ip} XXX")
 
 # Envoyer une requête TCP à l'ip au port souhaité et retourne les informations        
 def sendNmapRequest(ip, port):
@@ -116,6 +123,7 @@ def sendNmapRequest(ip, port):
 def main(i):
     initDatabase()
     ip = getRandomIp()
+    ip = "141.94.138.22"
     port = "25565"
     result = sendNmapRequest(ip, port)
 
@@ -123,11 +131,11 @@ def main(i):
         # Extrayez les informations du service
         infos = extractResultInfo(ip, result)
 
-        if infos and infos['state'] == "open":
+        if infos and infos["service"] == "minecraft":
             saveToDatabase(infos)
             print(f"{i} - Informations de l'ip :\n{infos}")
         else: 
-            print(f"{i} - Aucune information pour l'ip {ip} (filtered, close ou none)")
+            print(f"{i} - Aucune information pour l'ip {ip} (not minecraft service or none)")
     else:
         print(f"{i} - Erreur lors de l'exécution de la commande Nmap.")
     
@@ -138,7 +146,6 @@ if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor(max_workers=maximum_concurrent_tasks) as executor:
         # Liste des futures pour les tâches en cours
         futures = []
-        #ip_map_lock = threading.Lock()
 
         # Lancer les tâches en parallèle
         for i in range(1, nbCrawl + 1):

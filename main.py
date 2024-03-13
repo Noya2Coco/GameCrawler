@@ -4,11 +4,15 @@ import socket
 import sqlite3
 import subprocess
 import concurrent.futures
-
+import threading
+import time
+import keyboard
 import requests
 
 maximum_concurrent_tasks = 30
 webhook_url = "https://discord.com/api/webhooks/1217567600888778832/XBf5u_WhybDR19OldTMfTTq1Ai0TQrgUdyyjalInfWbtWf0mORuU2opiyxfp-VfJvcuQ"
+webhook_url_vps = "https://discord.com/api/webhooks/1217603775041114212/6m6BCAYz4dAU46OaY3RZsR2evDwsrPtzpub6HixnppWiV538BOVGa5f2jMsO9q6fQ3rY"
+programEnd = False
 
 def initDatabase():
     # Connexion à la base de données (ou création si elle n'existe pas)
@@ -132,16 +136,34 @@ def sendDiscordAlert(infos):
 
     data = {
         "content" : f"==================== \nUn serveur ouvert a été trouvé (Status: 'open'). \nIp : {ip} \nTitre : {title} \nVersions : {version_range} \nUsers : {users}",
-        "username" : "McCrawler Alert"
+        "username" : "McCrawler Alert",
+        "avatar_url" : "https://i.pinimg.com/564x/5f/39/47/5f3947a0192e4f94108325cbec86bc4f.jpg"
     }
-    result = requests.post(webhook_url, json = data)
 
+    result = requests.post(webhook_url, json = data)
     try:
         result.raise_for_status()
     except requests.exceptions.HTTPError as err:
         print(err)
     else:
         print("Message Discord envoyé avec succès, code {}.".format(result.status_code))
+
+    result_vps = requests.post(webhook_url_vps, json = data)
+    try:
+        result_vps.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        print(err)
+    else:
+        print("Message Discord envoyé avec succès, code {}.".format(result_vps.status_code))
+
+def keyDetection():
+    global programEnd
+    while True:
+        if keyboard.is_pressed('q'):
+            print("La touche 'q' a été pressée. Arrêt du programme dans moins de 1000 requêtes.")
+            programEnd = True
+            exit()
+        time.sleep(0.1)
 
 def main(i):
     initDatabase()
@@ -167,24 +189,54 @@ def main(i):
         print(f"{i} - Erreur lors de l'exécution de la commande Nmap.")
     
 if __name__ == "__main__":
-    nbCrawl = int(input("Combien de crawl ? "))
+    nbCrawl = int(input("Combien de crawl [0 => forever] ? "))
+    print("Démarrage du crawler, pour arrêter la boucle, pressez 'q'.")
 
     # Créer un pool de threads pour exécuter les tâches en parallèle
     with concurrent.futures.ThreadPoolExecutor(max_workers=maximum_concurrent_tasks) as executor:
         # Liste des futures pour les tâches en cours
         futures = []
+        detection_thread = threading.Thread(target=keyDetection)
+        detection_thread.start()
 
-        # Lancer les tâches en parallèle
-        for i in range(1, nbCrawl + 1):
-            future = executor.submit(main, i)
-            futures.append(future)
+        if nbCrawl == 0:
+            i = 0
 
-        # Attendre que toutes les tâches se terminent
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except socket.gaierror:
-                # Gérer les erreurs de résolution DNS si nécessaire
-                pass
+            while not programEnd:
+                # Lancer les tâches en parallèle
+                for j in range(1, 1000 + 1):
+                    i += 1
+                    future = executor.submit(main, i)
+                    futures.append(future)
+                    
+                # Attendre que toutes les tâches se terminent
+                for future in concurrent.futures.as_completed(futures):
+                    if programEnd:
+                        break 
+                    try:
+                        future.result()
+                    except socket.gaierror:
+                        # Gérer les erreurs de résolution DNS si nécessaire
+                        pass
+                futures.clear()
+                
+                
+        else:
+            while not programEnd:
+                # Lancer les tâches en parallèle
+                for i in range(1, nbCrawl + 1):
+                    future = executor.submit(main, i)
+                    futures.append(future)
+                    
+                # Attendre que toutes les tâches se terminent
+                for future in concurrent.futures.as_completed(futures):
+                    if programEnd:
+                        break 
+                    try:
+                        future.result()
+                    except socket.gaierror:
+                        # Gérer les erreurs de résolution DNS si nécessaire
+                        pass
+                futures.clear()
             
     print("Terminé")

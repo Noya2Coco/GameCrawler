@@ -5,7 +5,10 @@ import sqlite3
 import subprocess
 import concurrent.futures
 
+import requests
+
 maximum_concurrent_tasks = 30
+webhook_url = "https://discord.com/api/webhooks/1217567600888778832/XBf5u_WhybDR19OldTMfTTq1Ai0TQrgUdyyjalInfWbtWf0mORuU2opiyxfp-VfJvcuQ"
 
 def initDatabase():
     # Connexion à la base de données (ou création si elle n'existe pas)
@@ -85,7 +88,7 @@ def extractResultInfo(ip, result):
         return None
     
 def saveToDatabase(infos):
-    if infos["service"] == "minecraft":
+    if infos["service"] == "minecraft" and infos["state"] == 'open':
         ip = infos["ip"]
 
         try:
@@ -112,7 +115,6 @@ def sendNmapRequest(ip, port):
     command = ["nmap", "-p", port, "-sV", ip]
 
     try:
-        # Exécutez la commande et capturez la sortie
         result = subprocess.run(command, capture_output=True, text=True, check=True).stdout
 
         return result
@@ -120,21 +122,44 @@ def sendNmapRequest(ip, port):
         print(f"Erreur lors de l'exécution de la commande : {e}")
         return None
 
+def sendDiscordAlert(infos):
+    ip = infos['ip']
+    title = infos['mc']['title']
+    version_range = infos['mc']['version_range']
+    users = str(infos['mc']['users']['online']) + "/" + str(infos['mc']['users']['max'])
+
+    data = {
+        "content" : f"Un serveur ouvert a été trouvé (Status: 'open').\nIp : {ip}\nTitre : {title}\nVersions : {version_range}\nUsers : {users}",
+        "username" : "McCrawler Alert"
+    }
+    result = requests.post(webhook_url, json = data)
+
+    try:
+        result.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        print(err)
+    else:
+        print("Message Discord envoyé avec succès, code {}.".format(result.status_code))
+
 def main(i):
     initDatabase()
     ip = getRandomIp()
     port = "25565"
     result = sendNmapRequest(ip, port)
 
+    if i % 50 == 0:
+        print(f"Requêtes effectuées : {i}")
+    
     if result:
-        # Extrayez les informations du service
         infos = extractResultInfo(ip, result)
-
-        if infos and infos["service"] == "minecraft":
+    
+        if infos and infos["service"] == "minecraft" and infos["state"] == 'open':
             saveToDatabase(infos)
+            sendDiscordAlert(infos)
             print(f"{i} - Informations de l'ip :\n{infos}")
-        else: 
-            print(f"{i} - Aucune information pour l'ip {ip} (not minecraft service or none)")
+        else:
+            pass 
+            #print(f"{i} - Aucune information pour l'ip {ip} (not minecraft service or none)")
     else:
         print(f"{i} - Erreur lors de l'exécution de la commande Nmap.")
     

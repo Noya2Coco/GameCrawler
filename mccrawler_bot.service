@@ -3,7 +3,7 @@ Description=Bot Discord pour McCrawler
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /home/noah/McCrawler/McCrawlerBot.py
+ExecStart=/home/noah/McCrawler/venv/bin/python3 /home/noah/McCrawler/McCrawlerBot.py
 
 [Install]
 WantedBy=multi-user.target

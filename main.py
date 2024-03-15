@@ -189,6 +189,30 @@ def main(i):
         print(f"{i} - Erreur lors de l'exécution de la commande Nmap.")
     
 if __name__ == "__main__":
+    # Créer un pool de threads pour exécuter les tâches en parallèle
+    with concurrent.futures.ThreadPoolExecutor(max_workers=maximum_concurrent_tasks) as executor:
+        # Liste des futures pour les tâches en cours
+        futures = []
+        i=0
+
+        # Lancer les tâches en parallèle
+        for j in range(1, 1000 + 1):
+            i +=1
+            future = executor.submit(main, i)
+            futures.append(future)
+            
+        # Attendre que toutes les tâches se terminent
+        for future in concurrent.futures.as_completed(futures):
+            if programEnd:
+                break 
+            try:
+                future.result()
+            except socket.gaierror:
+                # Gérer les erreurs de résolution DNS si nécessaire
+                pass
+        futures.clear()
+        
+    """
     nbCrawl = int(input("Combien de crawl [0 => forever] ? "))
     print("Démarrage du crawler, pour arrêter la boucle, pressez 'q'.")
 
@@ -238,5 +262,6 @@ if __name__ == "__main__":
                         # Gérer les erreurs de résolution DNS si nécessaire
                         pass
                 futures.clear()
+    """
             
     print("Terminé")

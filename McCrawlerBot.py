@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import subprocess
-import asyncio_atexit
 
 intents = discord.Intents.default()  # Créer un objet Intents avec les intents par défaut
 intents.message_content = True  # Activer l'intent message_content

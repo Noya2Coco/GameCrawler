@@ -10,9 +10,48 @@ import keyboard
 import requests
 
 maximum_concurrent_tasks = 30
-webhook_url = "https://discord.com/api/webhooks/1217567600888778832/XBf5u_WhybDR19OldTMfTTq1Ai0TQrgUdyyjalInfWbtWf0mORuU2opiyxfp-VfJvcuQ"
-webhook_url_vps = "https://discord.com/api/webhooks/1217603775041114212/6m6BCAYz4dAU46OaY3RZsR2evDwsrPtzpub6HixnppWiV538BOVGa5f2jMsO9q6fQ3rY"
-programEnd = False
+
+webhookUrlToken = [
+    "XBf5u_WhybDR19OldTMfTTq1Ai0TQrgUdyyjalInfWbtWf0mORuU2opiyxfp-VfJvcuQ", # Dev perso
+    "6m6BCAYz4dAU46OaY3RZsR2evDwsrPtzpub6HixnppWiV538BOVGa5f2jMsO9q6fQ3rY" # VPS
+]
+
+# https://discord.com/api/webhooks/
+crawlerPortToService = {
+    # port : [ [ [service names], global name, channel], [...] ]
+    "7777" : {
+        "terraria" : "terraria",
+        "terraria-server" : "terraria",
+    },
+    "25565" : {
+        "minecraft" : "minecraft",
+        "mc-server" : "minecraft",
+    },
+    "27015" : {
+        "garrys-mod" : "gmod",
+        "garrysmod" : "gmod",
+        "facepunch" : "gmod",
+        
+        "csgo" : "csgo",
+        "counter-strike" : "csgo",
+
+        "tf2" : "tf2",
+        "team-fortress-2" : "tf2",
+    },
+    "28015" : {
+        "rust" : "rust",
+        "rust-server" : "rust",
+    },
+}
+
+crawlerServiceToChannel = {
+    "minecraft" : "1217567346244321441",
+    "gmod" : "1218224637931159552",
+    "terraria" : "1218218604089049228",
+    "rust" : "1218225701124182057",
+    "csgo" : "1218219343603826799",
+    "tf2" : "1218221323528962078",
+}
 
 def initDatabase():
     # Connexion à la base de données (ou création si elle n'existe pas)
@@ -128,7 +167,7 @@ def sendNmapRequest(ip, port):
         print(f"Erreur lors de l'exécution de la commande : {e}")
         return None
 
-def sendDiscordAlert(infos):
+def sendOpenAlert(infos):
     ip = infos['ip']
     title = infos['mc']['title']
     version_range = infos['mc']['version_range']
@@ -179,7 +218,7 @@ def main(i):
     
         if infos and infos["service"] == "minecraft" and infos["state"] == 'open':
             saveToDatabase(infos)
-            sendDiscordAlert(infos)
+            sendOpenAlert(infos)
             print(f"{i} - Informations de l'ip :\n{infos}")
             print(result)
         else:
@@ -211,57 +250,5 @@ if __name__ == "__main__":
                 # Gérer les erreurs de résolution DNS si nécessaire
                 pass
         futures.clear()
-        
-    """
-    nbCrawl = int(input("Combien de crawl [0 => forever] ? "))
-    print("Démarrage du crawler, pour arrêter la boucle, pressez 'q'.")
-
-    # Créer un pool de threads pour exécuter les tâches en parallèle
-    with concurrent.futures.ThreadPoolExecutor(max_workers=maximum_concurrent_tasks) as executor:
-        # Liste des futures pour les tâches en cours
-        futures = []
-        detection_thread = threading.Thread(target=keyDetection)
-        detection_thread.start()
-
-        if nbCrawl == 0:
-            i = 0
-
-            while not programEnd:
-                # Lancer les tâches en parallèle
-                for j in range(1, 1000 + 1):
-                    i += 1
-                    future = executor.submit(main, i)
-                    futures.append(future)
-                    
-                # Attendre que toutes les tâches se terminent
-                for future in concurrent.futures.as_completed(futures):
-                    if programEnd:
-                        break 
-                    try:
-                        future.result()
-                    except socket.gaierror:
-                        # Gérer les erreurs de résolution DNS si nécessaire
-                        pass
-                futures.clear()
-                
-                
-        else:
-            while not programEnd:
-                # Lancer les tâches en parallèle
-                for i in range(1, nbCrawl + 1):
-                    future = executor.submit(main, i)
-                    futures.append(future)
-                    
-                # Attendre que toutes les tâches se terminent
-                for future in concurrent.futures.as_completed(futures):
-                    if programEnd:
-                        break 
-                    try:
-                        future.result()
-                    except socket.gaierror:
-                        # Gérer les erreurs de résolution DNS si nécessaire
-                        pass
-                futures.clear()
-    """
             
     print("Terminé")

@@ -1,9 +1,9 @@
 [Unit]
-Description=Bot Discord pour McCrawler
+Description=Bot Discord pour GameCrawler
 
 [Service]
 Type=simple
-ExecStart=/home/noah/McCrawler/venv/bin/python3 /home/noah/McCrawler/McCrawlerBot.py
+ExecStart=/home/noah/GameCrawler/venv/bin/python3 /home/noah/GameCrawler/gameCrawlerBot.py
 
 [Install]
 WantedBy=multi-user.target

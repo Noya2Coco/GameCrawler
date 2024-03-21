@@ -11,14 +11,7 @@ import requests
 
 maximum_concurrent_tasks = 30
 
-webhookUrlToken = [
-    "XBf5u_WhybDR19OldTMfTTq1Ai0TQrgUdyyjalInfWbtWf0mORuU2opiyxfp-VfJvcuQ", # Dev perso
-    "6m6BCAYz4dAU46OaY3RZsR2evDwsrPtzpub6HixnppWiV538BOVGa5f2jMsO9q6fQ3rY" # VPS
-]
-
-# https://discord.com/api/webhooks/
-crawlerPortToService = {
-    # port : [ [ [service names], global name, channel], [...] ]
+portToService = {
     "7777" : {
         "terraria" : "terraria",
         "terraria-server" : "terraria",
@@ -44,18 +37,18 @@ crawlerPortToService = {
     },
 }
 
-crawlerServiceToChannel = {
-    "minecraft" : "1217567346244321441",
-    "gmod" : "1218224637931159552",
-    "terraria" : "1218218604089049228",
-    "rust" : "1218225701124182057",
-    "csgo" : "1218219343603826799",
-    "tf2" : "1218221323528962078",
+serviceToChannel = {
+    "minecraft" : "https://discord.com/api/webhooks/1217567600888778832/XBf5u_WhybDR19OldTMfTTq1Ai0TQrgUdyyjalInfWbtWf0mORuU2opiyxfp-VfJvcuQ",
+    "gmod" : "https://discord.com/api/webhooks/1219426733082546258/GG0p5OjKjwErWrYpV4_fEsnSZr8zVB9-_UP8X6lHEK2fUkE4NJsa1OpUutlS9YgqbC9Y",
+    "terraria" : "https://discord.com/api/webhooks/1219427083718103070/teKNJWYQ2JmGavOvJG3PNfqrmbv64w7eYa8LOdiquRsOtoScRoRTR4clE0vG1pPoP6xb",
+    "rust" : "https://discord.com/api/webhooks/1219427201426919444/sm9ZepkT5n-LE_CrU5MxisRZ0DiJ6QEk81hRr7pPYrjQUTlkcyamq_Atu_AfzkmA9UDu",
+    "csgo" : "https://discord.com/api/webhooks/1219426905514836078/RIRgIPjEHH4cvm_3qVgI7RK_YtT4VuAVlDqeNVJ_IgY1UdVOFB3yarv2ee6GOfHpjEM2",
+    "tf2" : "https://discord.com/api/webhooks/1219426983398608956/7-0HZSG2b9MUR2_xGypL30CGEOIkmeZHlZV-BoCtXVqND7galvAOMQb52HNB_uPz-_E9",
 }
 
 def initDatabase():
     # Connexion à la base de données (ou création si elle n'existe pas)
-    conn = sqlite3.connect('MCServerInfos.db')
+    conn = sqlite3.connect('servers_data.db')
     # Création d'une table pour stocker les informations
     conn.execute('''
         CREATE TABLE IF NOT EXISTS MCServerInfos (
@@ -80,28 +73,26 @@ def getRandomIp():
 
         return f"{first_octet}.{second_octet}.{random.randint(0, 255)}.{random.randint(0, 255)}"
 
-def extractResultInfo(ip, result):
-    # Utilisez une expression régulière pour extraire les informations souhaitées
+def extractResultInfo(ip, port, result):
     pattern = r"(\d+/tcp)\s+(\w+)\s+(\w+)\s+(.*?)\n"
     match = re.search(pattern, result)
 
     if match:
-        port, state, service, version_info = match.groups()
+        _, state, service, version_info = match.groups()
 
-        # Utilisez une autre expression régulière pour extraire les informations spécifiques de la version
         message_pattern = r"Message: (.*?)(?=1\.)"
         message_match = re.search(message_pattern, version_info)
         if message_match:
             message = message_match.group(1)
         else:
-            message = None
+            message = "?"
 
         version_pattern = r"1\.\d+([- .\d]*)"
         version_match = re.search(version_pattern, version_info)
         if version_match:
             version_range = version_match.group(0)
         else:
-            version_range = None
+            version_range = "?"
 
         users_pattern = r"Users: (\d+)/(\d+)"
         users_match = re.search(users_pattern, version_info)
@@ -109,21 +100,17 @@ def extractResultInfo(ip, result):
             users_count = int(users_match.group(1))
             total_users = int(users_match.group(2))
         else:
-            users_count, total_users = None, None
+            users_count, total_users = "?", "?"
 
         data = {
             'ip': ip,
             'port': port,
             'state': state,
             'service': service,
-            'mc': {
-                'title': message,
-                'version_range': version_range,
-                'users': {
-                    'online': users_count,
-                    'max': total_users,
-                },
-            }
+            'title': message,
+            'version_range': version_range,
+            'onlineUsers': users_count,
+            'maxUsers': total_users,
         }
         return data
         
@@ -167,33 +154,33 @@ def sendNmapRequest(ip, port):
         print(f"Erreur lors de l'exécution de la commande : {e}")
         return None
 
-def sendOpenAlert(infos):
-    ip = infos['ip']
-    title = infos['mc']['title']
-    version_range = infos['mc']['version_range']
-    users = str(infos['mc']['users']['online']) + "/" + str(infos['mc']['users']['max'])
-
+def sendDiscordAlert(infos):
     data = {
-        "content" : f"==================== \nUn serveur ouvert a été trouvé (Status: 'open'). \nIp : {ip} \nTitre : {title} \nVersions : {version_range} \nUsers : {users}",
-        "username" : "McCrawler Alert",
+        "content" : "======================================\n" +
+            "Un serveur ouvert a été trouvé !\n" +
+            "Ip : " + infos["ip"] + "\n" +
+            "Port : " + str(infos["port"]) + "\n" +
+            "State : " + infos["state"] + "\n" +
+            "Service : " + infos["service"] + "\n" +
+            "Title : " + infos["title"] + "\n" +
+            "Versions : " + infos["version_range"] + "\n" +
+            "Users : " + str(infos["onlineUsers"]) + "/" + str(infos["maxUsers"]) + "\n",
+        "username" : "GameCrawler Alert",
         "avatar_url" : "https://i.pinimg.com/564x/5f/39/47/5f3947a0192e4f94108325cbec86bc4f.jpg"
     }
 
-    result = requests.post(webhook_url, json = data)
+    try:
+        webhookUrl = serviceToChannel[portToService[infos['port']][infos["service"]]]
+    except:
+        webhookUrl = "https://discord.com/api/webhooks/1219427371791155221/RgOHfC3T0yoCvJN5xra6yr4_6dXN9pmoZftxzG5B9CuyExB5oLE_NaWQ7oB65Foqf6iq"
+
+    result = requests.post(webhookUrl, json = data)
     try:
         result.raise_for_status()
     except requests.exceptions.HTTPError as err:
         print(err)
     else:
         print("Message Discord envoyé avec succès, code {}.".format(result.status_code))
-
-    result_vps = requests.post(webhook_url_vps, json = data)
-    try:
-        result_vps.raise_for_status()
-    except requests.exceptions.HTTPError as err:
-        print(err)
-    else:
-        print("Message Discord envoyé avec succès, code {}.".format(result_vps.status_code))
 
 def keyDetection():
     global programEnd
@@ -207,25 +194,24 @@ def keyDetection():
 def main(i):
     initDatabase()
     ip = getRandomIp()
-    port = "25565"
-    result = sendNmapRequest(ip, port)
-
-    if i % 50 == 0:
+    if i % 50 == 0: 
         print(f"Requêtes effectuées : {i}")
-    
-    if result:
-        infos = extractResultInfo(ip, result)
-    
-        if infos and infos["service"] == "minecraft" and infos["state"] == 'open':
-            saveToDatabase(infos)
-            sendOpenAlert(infos)
-            print(f"{i} - Informations de l'ip :\n{infos}")
-            print(result)
+
+    for port in portToService:
+        result = sendNmapRequest(ip, port)
+        
+        if result:
+            infos = extractResultInfo(ip, port, result)
+            print(infos)
+            if infos != None and infos['state'] == "open" :
+                #saveToDatabase(infos)
+                sendDiscordAlert(infos)
+                print(f"{i} - Informations pour l'ip {ip}:{port}\n[{infos}]\n")
+
+            else:
+                print(f"{i} - Aucune information pour l'ip {ip}:{port}\n[{infos}]\n")
         else:
-            pass 
-            #print(f"{i} - Aucune information pour l'ip {ip} (not minecraft service or none)")
-    else:
-        print(f"{i} - Erreur lors de l'exécution de la commande Nmap.")
+            print(f"{i} - Erreur lors de l'exécution de la commande Nmap.")
     
 if __name__ == "__main__":
     # Créer un pool de threads pour exécuter les tâches en parallèle
@@ -235,20 +221,19 @@ if __name__ == "__main__":
         i=0
 
         # Lancer les tâches en parallèle
-        for j in range(1, 1000 + 1):
+        for j in range(1, 1 + 1):
             i +=1
             future = executor.submit(main, i)
             futures.append(future)
             
         # Attendre que toutes les tâches se terminent
         for future in concurrent.futures.as_completed(futures):
-            if programEnd:
-                break 
             try:
                 future.result()
             except socket.gaierror:
                 # Gérer les erreurs de résolution DNS si nécessaire
                 pass
         futures.clear()
+        exit()
             
     print("Terminé")

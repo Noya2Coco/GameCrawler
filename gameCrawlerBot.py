@@ -40,7 +40,7 @@ async def start(ctx, arg=None):
     global process
     if process is None:
         try:
-            process = subprocess.Popen(['python', 'main.py'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            process = subprocess.Popen(['python3', 'main.py'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             await ctx.channel.send("Le script McCrawler **s'est lancé** correctement")
 
         except Exception as e:

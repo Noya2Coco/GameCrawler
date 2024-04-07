@@ -1,12 +1,13 @@
 import random
 import re
 import subprocess
-import time
 import discord
 from discord.ext import commands
 import threading
 import logging
+from logging.handlers import RotatingFileHandler
 import requests
+from database import Database
 
 
 # Configuration du bot Discord
@@ -18,10 +19,31 @@ bot = commands.Bot(command_prefix=command_prefix, intents=intents)
 # Thread pour arrêter le crawler
 stopEvent = threading.Event()
 
+# Configuration du logger
 logger = logging.getLogger("Crawler")
-logging.basicConfig(filename='bot.log', level=logging.INFO)
+logger.setLevel(logging.DEBUG)
 
-portToService = {
+maxLogSize = 100 * 1024 # 1024 => unité ko
+handler = RotatingFileHandler('logs/crawler.log', maxBytes=maxLogSize, backupCount=3)
+handler.setFormatter(logging.Formatter('%(asctime)19s | %(levelname)7s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+logger.addHandler(handler)
+logger.info("Server turned on")
+
+columns = {
+    "id" : "INTEGER PRIMARY KEY AUTOINCREMENT",
+    "ip" : "TEXT NOT NULL",
+    "port" : "INTEGER NOT NULL",
+    "state" : "TEXT NOT NULL",
+    "service" : "TEXT NOT NULL",
+    "title" : "TEXT",
+    "versionRange" : "TEXT",
+    "onlineUsers" : "INTEGER",
+    "maxUsers" : "INTEGER",
+    "lastUpdate" : "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+}
+database = Database('crawler', columns)
+
+PORT_TO_SERVICE = {
     "7777" : {
         "terraria" : "terraria",
         "terraria-server" : "terraria",
@@ -46,7 +68,8 @@ portToService = {
         "rust-server" : "rust",
     },
 }
-serviceToChannel = {
+
+SERVICE_TO_CHANNEL = {
     "minecraft" : "https://discord.com/api/webhooks/1217567600888778832/XBf5u_WhybDR19OldTMfTTq1Ai0TQrgUdyyjalInfWbtWf0mORuU2opiyxfp-VfJvcuQ",
     "gmod" : "https://discord.com/api/webhooks/1219426733082546258/GG0p5OjKjwErWrYpV4_fEsnSZr8zVB9-_UP8X6lHEK2fUkE4NJsa1OpUutlS9YgqbC9Y",
     "terraria" : "https://discord.com/api/webhooks/1219427083718103070/teKNJWYQ2JmGavOvJG3PNfqrmbv64w7eYa8LOdiquRsOtoScRoRTR4clE0vG1pPoP6xb",
@@ -55,8 +78,8 @@ serviceToChannel = {
     "tf2" : "https://discord.com/api/webhooks/1219426983398608956/7-0HZSG2b9MUR2_xGypL30CGEOIkmeZHlZV-BoCtXVqND7galvAOMQb52HNB_uPz-_E9",
 }
 
+MAX_NB_THREAD = 20
 index = 0
-
 
 
 # Générer une adresse IP aléatoire
@@ -86,6 +109,7 @@ def sendNmapRequest(ip, port):
         return None
     
 def extractResultInfo(ip, port, result):
+    # Retour conforme au format
     pattern = r"(\d+/tcp)\s+(\w+)\s+(\w+)\s+(.*?)\n"
     match = re.search(pattern, result)
 
@@ -97,22 +121,22 @@ def extractResultInfo(ip, port, result):
         if message_match:
             message = message_match.group(1)
         else:
-            message = "?"
+            message = None
 
         version_pattern = r"1\.\d+([- .\d]*)"
         version_match = re.search(version_pattern, version_info)
         if version_match:
-            version_range = version_match.group(0)
+            versionRange = version_match.group(0)
         else:
-            version_range = "?"
+            versionRange = None
 
         users_pattern = r"Users: (\d+)/(\d+)"
         users_match = re.search(users_pattern, version_info)
         if users_match:
-            users_count = int(users_match.group(1))
-            total_users = int(users_match.group(2))
+            onlineUsers = int(users_match.group(1))
+            maxUsers = int(users_match.group(2))
         else:
-            users_count, total_users = "?", "?"
+            onlineUsers, maxUsers = None, None
 
         data = {
             'ip': ip,
@@ -120,32 +144,30 @@ def extractResultInfo(ip, port, result):
             'state': state,
             'service': service,
             'title': message,
-            'version_range': version_range,
-            'onlineUsers': users_count,
-            'maxUsers': total_users,
+            'versionRange': versionRange,
+            'onlineUsers': onlineUsers,
+            'maxUsers': maxUsers,
         }
         return data
         
     else:
         return None
 
-def sendDiscordAlert(infos):
-    data = {
+def sendDiscordAlert(ip, port):
+    data = database.executeAction(f"SELECT * FROM crawler WHERE ip = '{ip}' AND port = {port}")
+    message = {
         "content" : "======================================\n" +
-            "Un serveur ouvert a été trouvé !\n" +
-            "Ip : " + infos["ip"] + "\n" +
-            "Port : " + str(infos["port"]) + "\n" +
-            "State : " + infos["state"] + "\n" +
-            "Service : " + infos["service"] + "\n" +
-            "Title : " + infos["title"] + "\n" +
-            "Versions : " + infos["version_range"] + "\n" +
-            "Users : " + str(infos["onlineUsers"]) + "/" + str(infos["maxUsers"]) + "\n",
-        "username" : "GameCrawler Alert",
+            "Un serveur ouvert a été trouvé !\n",
+        "username" : "GameCrawler",
         "avatar_url" : "https://i.pinimg.com/564x/5f/39/47/5f3947a0192e4f94108325cbec86bc4f.jpg"
     }
 
+    for key in data:
+        value = str(data[key])
+        message["content"] += f"{key} : {value}\n"
+
     try:
-        webhookUrl = serviceToChannel[portToService[infos['port']][infos["service"]]]
+        webhookUrl = SERVICE_TO_CHANNEL[PORT_TO_SERVICE[data["port"]][data["service"]]]
     except:
         webhookUrl = "https://discord.com/api/webhooks/1219427371791155221/RgOHfC3T0yoCvJN5xra6yr4_6dXN9pmoZftxzG5B9CuyExB5oLE_NaWQ7oB65Foqf6iq"
 
@@ -164,7 +186,7 @@ def startThreads():
     # Boucle pour créer et gérer les threads
     while True:
         # Limiter le nombre de threads à 20
-        if len(threads) >= 20:
+        if len(threads) >= MAX_NB_THREAD:
             # Attendre qu'un thread soit libre
             for thread in threads:
                 thread.join()
@@ -175,9 +197,6 @@ def startThreads():
         thread = threading.Thread(target=runThread)
         thread.start()
         threads.append(thread)
-        
-        global index
-        index += 1
 
         # Vérification si l'événement d'arrêt est activé
         if stopEvent.is_set():
@@ -189,52 +208,61 @@ def startThreads():
 
 # Fonction pour la tâche de chaque thread
 def runThread():
+    global index
+    index += 1
+    i = index
+    j = 1
+
     ip = getRandomIp()
-    for port in portToService:
+    for port in PORT_TO_SERVICE:
         result = sendNmapRequest(ip, port)
         
         if result:
             infos = extractResultInfo(ip, port, result)
 
-            if infos != None and infos['state'] == "open" :
-                #saveToDatabase(infos)
-                logger.info(f" {index} - Informations pour l'ip {ip}:{port} (Timestamp : {time.time()})\n[{infos}]")
-                sendDiscordAlert(infos)
+            if infos != None and infos['state'] == "open":
+                logger.warning(f"{i}.{j} -> {infos}\n")
+                database.insert(infos)
+                sendDiscordAlert(ip, port)
 
-            #else:
-                #logger.error(f" {index} - Aucune information pour l'ip {ip}:{port} (Timestamp : {time.time()})\n[{infos}]")
-                #logger.error(f"{index} - Aucune information pour l'ip {ip}:{port}\n[{infos}]\n")
-        #else:
-            #print(f"{i} - Erreur lors de l'exécution de la commande Nmap.")
-                
-                # Fonction pour arrêter la boucle infinie
+            elif infos != None:
+                logger.debug(f"{i}.{j} -> {infos}")
+                database.insert(infos)
+            
+            else:
+                #logger.info(f"{i}.{j} -> [{ip}:{port}] Aucune information\n")
+                pass
+        else:
+            logger.error(f"\n{i}.{j} -> [{ip}:{port}] Erreur lors de l'exécution de la commande Nmap\n")
+
+        j += 1 
 
 def stop():
     stopEvent.set()
 
-# Définir la fonction start comme une commande Discord
+# Commande qui démarre le Crawler
 @bot.command()
 async def start(ctx):
-    # Créer un événement pour la boucle infinie
-    #global stopEvent
-    #stopEvent = threading.Event()
-
     # Démarrer la fonction start dans un thread séparé
     threading.Thread(target=startThreads).start()
+    global stopEvent
+    stopEvent = threading.Event()
 
-    # Envoyer un message de confirmation à l'utilisateur
-    await ctx.send("Fonction start lancée avec succès !")
+    logger.info("Crawler started with command 'start'")
+    await ctx.send("Crawler allumé")
 
-# Définir la fonction stop comme une commande Discord
+# Commande qui arrête le Crawler
 @bot.command()
 async def stop(ctx):
     stopEvent.set()
 
-    # Envoyer un message de confirmation à l'utilisateur
-    await ctx.send("Fonction start arrêtée avec succès !")
+    logger.info("Crawler stopped with command 'stop'")
+    await ctx.send("Crawler éteint")
+
+# Commande qui renvoie des informations sur l'état du Crawler
+@bot.command()
+async def status(ctx):
+    await ctx.send("Nombre d'IP scannées : " + str(index -20))
 
 # Lancer le bot Discord
 bot.run("MTIxNzUxMzczMTg3NDA5NTEyNA.GFpCrv.4xrkgeMcxVuvjJP7RYcU7an14eI_iIyjVnZddY")
-
-# envoyer message channel
-# await message.channel.send("Le message est détecté !")

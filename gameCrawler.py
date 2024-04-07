@@ -1,3 +1,4 @@
+import os
 import random
 import re
 import subprocess
@@ -19,6 +20,11 @@ bot = commands.Bot(command_prefix=command_prefix, intents=intents)
 # Thread pour arrêter le crawler
 stopEvent = threading.Event()
 
+# Création du dossiers logs s'il n'existe pas
+folderName = "logs"
+if not os.path.exists(folderName):
+    os.makedirs(folderName)
+    
 # Configuration du logger
 logger = logging.getLogger("Crawler")
 logger.setLevel(logging.DEBUG)
